@@ -219,8 +219,49 @@ impl<'de, 'a, B: Buf> Deserializer<'de> for &'a mut RowBinaryDeserializer<'de, B
     }
 
     #[inline]
-    fn deserialize_map<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        panic!("maps are unsupported, use `Vec<(A, B)>` instead");
+    fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        // First, read the number of key-value pairs in the map
+        let len = self.read_size()?;
+
+        // Create a MapAccess implementation
+        struct Access<'de, 'a, B: Buf> {
+            deserializer: &'a mut RowBinaryDeserializer<'de, B>,
+            len: usize,
+        }
+
+        impl<'de, 'a, B: Buf> serde::de::MapAccess<'de> for Access<'de, 'a, B> {
+            type Error = Error;
+
+            fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+            where
+                K: DeserializeSeed<'de>,
+            {
+                if self.len > 0 {
+                    self.len -= 1;
+                    let key = DeserializeSeed::deserialize(seed, &mut *self.deserializer)?;
+                    Ok(Some(key))
+                } else {
+                    Ok(None)
+                }
+            }
+
+            fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+            where
+                V: DeserializeSeed<'de>,
+            {
+                DeserializeSeed::deserialize(seed, &mut *self.deserializer)
+            }
+
+            fn size_hint(&self) -> Option<usize> {
+                Some(self.len)
+            }
+        }
+
+        // Call visit_map with our Access implementation
+        visitor.visit_map(Access {
+            deserializer: self,
+            len,
+        })
     }
 
     #[inline]

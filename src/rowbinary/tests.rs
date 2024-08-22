@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -132,4 +134,46 @@ fn it_deserializes() {
         let actual: Sample<'_> = super::deserialize_from(buf, &mut temp_buf).unwrap();
         assert_eq!(actual, sample());
     }
+}
+
+#[test]
+fn it_deserialize_empty_map() {
+    let input = vec![0, 0, 0, 0]; // 4 zero bytes for an empty map (32-bit length)
+    let mut temp_buf = [0; 1024];
+    let result: HashMap<String, i32> = super::deserialize_from(&input[..], &mut temp_buf).unwrap();
+    assert!(result.is_empty());
+}
+
+#[test]
+fn it_deserialize_nested_map() {
+    // Input represents a map with 1 entry: {"outer": {"inner": 42}}
+    let input = [
+        1u8, // Outer map size
+        5, b'o', b'u', b't', b'e', b'r', // Key "outer"
+        1u8,  // Inner map size
+        5, b'i', b'n', b'n', b'e', b'r', // Key "inner"
+        42, 0, 0, 0, // Value 42
+    ];
+
+    let mut temp_buf = [0; 1024];
+    let result: HashMap<String, HashMap<String, u32>> =
+        super::deserialize_from(&input[..], &mut temp_buf).unwrap();
+    assert_eq!(result.len(), 1);
+    let inner_map = result.get("outer").unwrap();
+    assert_eq!(inner_map.get("inner"), Some(&42));
+}
+
+#[test]
+fn it_deserialize_int_string_map() {
+    let input = [
+        2u8, // Map size
+        1, 0, 0, 0, 1, b'x', // Key 1, Value "x"
+        2, 0, 0, 0, 1, b'y', // Key 2, Value "y"
+    ];
+
+    let mut temp_buf = [0; 1024];
+    let result: HashMap<u32, String> = super::deserialize_from(&input[..], &mut temp_buf).unwrap();
+    assert_eq!(result.len(), 2);
+    assert_eq!(result.get(&1), Some(&"x".to_string()));
+    assert_eq!(result.get(&2), Some(&"y".to_string()));
 }
