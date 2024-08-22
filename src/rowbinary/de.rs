@@ -275,8 +275,10 @@ impl<'de, 'a, B: Buf> Deserializer<'de> for &'a mut RowBinaryDeserializer<'de, B
     }
 
     #[inline]
-    fn deserialize_identifier<V: Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        panic!("identifiers are unsupported");
+    fn deserialize_identifier<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        // In RowBinary format, identifiers are typically stored as strings.
+        // So, we can reuse the logic for deserializing strings.
+        self.deserialize_str(visitor)
     }
 
     #[inline]
